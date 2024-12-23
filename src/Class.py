@@ -244,7 +244,7 @@ class ToDoListManager:
         """Add a task for the current user"""
         task_data = task.get_detailed_info()
         self._tasks_collection.insert_one(task_data)
-        st.text(f"Tugas '{task.name}' berhasil ditambahkan.")
+        st.success(f"Tugas '{task.name}' berhasil ditambahkan.")
 
     def mark_task_done(self, task_name):
         """Mark a task as done and update points"""
@@ -262,13 +262,13 @@ class ToDoListManager:
                 "name": task_name, 
                 "username": self._username
             })
-            st.text(f"Tugas '{task_name}' selesai.")
+            st.success(f"Tugas '{task_name}' selesai.")
         else:
             self._tasks_collection.delete_one({
                 "name": task_name, 
                 "username": self._username
             })
-            st.text(f"Tugas Missed '{task_name}' selesai.")
+            st.success(f"Tugas Missed '{task_name}' selesai.")
             
     def update_task_types(self):
         """Update task types based on current time"""
@@ -306,48 +306,70 @@ class ToDoListManager:
         )
             
     def display_tasks(self):
-        """Display tasks for the current user with updated types"""
+        """Display tasks for the current user with updated types using tabs"""
         # Update task types before displaying
         self.update_task_types()
-        
+
+        # Jenis tugas yang akan ditampilkan
         task_types = ["urgent", "common", "missed"]
+        tab_labels = ["Tugas Urgent", "Tugas Common", "Tugas Missed"]  # Label tab
         total_tasks = 0
-        
-        for task_type in task_types:
-            tasks = self._tasks_collection.find({
-                "type": task_type,
-                "username": self._username
-            })
-            
-            st.markdown(f"### Tugas {task_type.capitalize()}")
-            
-            found = False
-            for task in tasks:
-                found = True
-                total_tasks += 1
-                
-                # Format deadline
-                deadline = task['deadline'].astimezone(pytz.timezone('Asia/Jakarta'))
-                deadline_str = deadline.strftime("%d %b %Y %H:%M")
-                
-                # Display task information in a more structured way
-                with st.expander(f"**{task['name']}**"):
-                    st.markdown(f"""
-                    **Nama**     : {task['name']}  
-                    **Deskripsi**: {task['description']}  
-                    **Deadline** : {deadline_str}  
-                    **Status**   : {task['status']}  
-                    **Prioritas**: {task['priority']}  
-                    **Point**    : {task['point']}
-                    """)
-                    
+
+        # Membuat tabs untuk setiap kategori tugas
+        tabs = st.tabs(tab_labels)
+
+        for task_type, tab in zip(task_types, tabs):
+            with tab:
+                # Cari tugas berdasarkan jenis dan username
+                tasks = self._tasks_collection.find({
+                    "type": task_type,
+                    "username": self._username
+                })
+
+                st.subheader(f"{task_type.capitalize()} Tasks", anchor=False)
+                found = False
+
+                # Iterasi untuk menampilkan tugas
+                for task in tasks:
+                    found = True
+                    total_tasks += 1
+
+                    # Format deadline
+                    deadline = task['deadline'].astimezone(pytz.timezone('Asia/Jakarta'))
+                    deadline_str = deadline.strftime("%d %b %Y %H:%M")
+
+                    # Tampilkan informasi tugas
+                    with st.expander(f"**{task['name']}**"):
+                        st.markdown(f"""
+                        **Nama**     : {task['name']}  
+                        **Deskripsi**: {task['description']}  
+                        **Deadline** : {deadline_str}  
+                        **Status**   : {task['status']}  
+                        **Prioritas**: {task['priority']}  
+                        **Point**    : {task['point']}
+                        """)
+                        
+                        if task_type == "urgent":
+                            st.markdown("---")
+                            deadline_display = st.empty()  # Create an empty container to update every second
+                            now = datetime.now(pytz.timezone('Asia/Jakarta'))
+                            time_left = deadline - now
+                            if time_left.total_seconds() <= 0:
+                                deadline_display.markdown("**Deadline has passed!**")
+                                break
+
+                            countdown_str = f"{str(time_left).split('.')[0]}"  # HH:MM:SS format
+                            deadline_display.markdown(f"**Waktu Tersisa**: {countdown_str}")
+
+                    # Tombol untuk menyelesaikan tugas
+                    if st.button(f"Complete {task['name']}", key=f"complete-{task['name']}", type="primary"):
+                        self.mark_task_done(task['name'])
                     st.markdown("---")
-                if st.button("Selesaikan Tugas"):
-                    self.mark_task_done(task['name'])
-            
-            if not found:
-                st.info(f"Tidak ada tugas {task_type}")
-                st.markdown("---")
-        
+
+                if not found:
+                    st.info(f"Tidak ada tugas untuk kategori {task_type.capitalize()}.")
+                    st.markdown("---")
+
+        # Pesan jika semua tugas selesai
         if total_tasks == 0:
             st.success("Tidak ada tugas yang perlu dikerjakan! 🎉")

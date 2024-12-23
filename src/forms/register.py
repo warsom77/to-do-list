@@ -11,7 +11,7 @@ def register():
         new_password = st.text_input("Password Baru", type="password")
         confirm_password = st.text_input("Konfirmasi Password", type="password")
         
-        if st.form_submit_button("Sign Up", type="primary"):
+        if st.form_submit_button("Sign Up", type="primary", use_container_width=True):
             if not new_username or not new_password or not confirm_password:
                 st.error("Semua kolom harus diisi!")
             elif new_password != confirm_password:
