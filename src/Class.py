@@ -3,10 +3,13 @@ import hashlib
 import pytz
 import time
 import streamlit as st
+import pandas as pd
 from pymongo import MongoClient
 from datetime import datetime, timedelta, date
 from abc import ABC
 from random import randint
+from pprint import pprint
+
 
 class DatabaseConnection:
     """Singleton database connection manager"""
@@ -46,6 +49,9 @@ class UserManager:
         self._db_connection = DatabaseConnection()
         self._users_collection = self._db_connection.users_collection
         self._current_user = None
+        
+    def set_current_user(self, username):
+        self._current_user = self._users_collection.find_one({"username": username})
 
     def _hash_password(self, password):
         """Hash password for secure storage"""
@@ -89,21 +95,31 @@ class UserManager:
         return False, "Invalid username or password"
 
     def _reset_points_if_needed(self):
-        """Reset points based on day and time (Sunday at 00:00)"""
+        """Reset points based on day and time (Monday at 12:00 PM)"""
         if not self._current_user:
+            print("No current user found. Exiting function.")
             return
 
         # Ambil waktu sekarang dalam zona waktu Jakarta
         current_time = datetime.now(pytz.timezone('Asia/Jakarta'))
+        print("\nCurrent Time Details:")
+        print("=" * 40)
+        print(f"Current time: {current_time}")
 
-        # Ambil waktu reset terakhir dari database, jika tidak ada gunakan default hari ini
-        last_reset = self._current_user.get('last_point_reset', current_time)
+        # Ambil waktu reset terakhir dari database, jika tidak ada gunakan default 1970-01-01
+        timezone = pytz.timezone('Asia/Jakarta')
+        default_last_reset = timezone.localize(datetime(1970, 1, 1))
+        last_reset = self._current_user.get('last_point_reset', default_last_reset)
+        print(f"Last reset time: {last_reset}")
 
-        # Periksa jika waktu sekarang adalah hari Minggu jam 00:00 dan reset belum dilakukan
-        is_sunday_midnight = current_time.weekday() == 6 and current_time.hour == 0 and current_time.minute == 0
-        reset_not_done_today = current_time.date() != last_reset.date()
+        # Periksa jika waktu sekarang adalah hari Senin setelah jam 12:00 siang dan reset belum dilakukan hari ini
+        is_monday_noon_or_later = current_time.weekday() == 0 and current_time.hour >= 12
+        reset_not_done_today = last_reset.date() != current_time.date()
+        print(f"Is Monday after noon: {is_monday_noon_or_later}")
+        print(f"Has reset been done today: {reset_not_done_today}")
+        print("=" * 40)
 
-        if is_sunday_midnight and reset_not_done_today:
+        if is_monday_noon_or_later and reset_not_done_today:
             # Reset semua poin untuk semua hari
             update = {
                 "point_senin": 0,
@@ -116,22 +132,37 @@ class UserManager:
                 "last_point_reset": current_time
             }
 
+            print("\nReset Points and Last Reset Time:")
+            pprint(update)
+            print("=" * 40)
+
             # Update data pengguna di database
-            self._users_collection.update_one(
+            result = self._users_collection.update_one(
                 {"username": self._current_user['username']},
                 {"$set": update}
             )
+            print("\nDatabase Update Result:")
+            print("=" * 40)
+            print(f"Modified Documents: {result.modified_count}")
+            print("=" * 40)
 
             # Refresh data pengguna aktif
             self._current_user = self._users_collection.find_one(
                 {"username": self._current_user['username']}
             )
+            print("\nCurrent User Data After Refresh:")
+            pprint(self._current_user)
+            print("=" * 40)
 
     def add_daily_points(self, points, username):
         """Add points for the current day"""
         if not username:
-            st.warning("Pengguna saat ini belum ditentukan.")
-            return False
+            raise ValueError("Username harus ditentukan.")
+
+        # Set current user
+        self.set_current_user(username)
+        if not self._current_user:
+            raise ValueError(f"Pengguna dengan username '{username}' tidak ditemukan.")
 
         # Ensure points are reset if needed
         self._reset_points_if_needed()
@@ -148,8 +179,6 @@ class UserManager:
             6: "point_minggu"
         }
         point_field = day_points_map[today.weekday()]
-        #st.write(f"Tanggal dan waktu sekarang: {today}")
-        #st.write(f"Hari (weekday): {today.weekday()}")
 
         # Update points
         self._users_collection.update_one(
