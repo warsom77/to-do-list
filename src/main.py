@@ -67,7 +67,7 @@ def main_application():
         pg = st.navigation(
             {
                 "MENU": [beranda, tambah_tugas, tampilkan_tugas]
-            }, position="sidebar"
+            }
         )
         pg.run()
 

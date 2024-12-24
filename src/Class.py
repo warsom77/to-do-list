@@ -1,9 +1,10 @@
 import logging
 import hashlib
 import pytz
+import time
 import streamlit as st
 from pymongo import MongoClient
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from abc import ABC
 from random import randint
 
@@ -244,7 +245,6 @@ class ToDoListManager:
         """Add a task for the current user"""
         task_data = task.get_detailed_info()
         self._tasks_collection.insert_one(task_data)
-        st.success(f"Tugas '{task.name}' berhasil ditambahkan.")
 
     def mark_task_done(self, task_name):
         """Mark a task as done and update points"""
@@ -283,8 +283,7 @@ class ToDoListManager:
             {
                 "$set": {
                     "type": "missed",
-                    "status": "missed",
-                    "point": 0
+                    "status": "missed"
                 }
             }
         )
@@ -304,7 +303,36 @@ class ToDoListManager:
                 }
             }
         )
-            
+        
+    from datetime import datetime, date
+
+    def update_task_deadline(self, task_name, new_deadline):
+        """Update deadline and type for a task"""
+        # Ambil waktu saat ini
+        now = datetime.now()
+
+        # Tentukan tipe tugas berdasarkan deadline
+        if (new_deadline - now).days <= 1:
+            new_type = "urgent"
+        else:
+            new_type = "common"
+
+        # Perbarui deadline dan tipe tugas di database
+        result = self._tasks_collection.update_one(
+            {"name": task_name, "username": self._username},
+            {"$set": {"deadline": new_deadline, "type": new_type, "status": "ongoing"}}
+        )
+
+        # Berikan umpan balik ke pengguna
+        if result.modified_count > 0:
+            st.success(f"Deadline untuk '{task_name}' berhasil diperbarui ke {new_deadline}, dan tipe tugas diubah menjadi '{new_type}'.")
+        else:
+            st.error(f"Gagal memperbarui deadline untuk '{task_name}'.")
+
+    def delete_task(self, task_name):
+        """Delete a task from the database"""
+        self._tasks_collection.delete_one({"name": task_name, "username": self._username})
+
     def display_tasks(self):
         """Display tasks for the current user with updated types using tabs"""
         # Update task types before displaying
@@ -348,22 +376,55 @@ class ToDoListManager:
                         **Prioritas**: {task['priority']}  
                         **Point**    : {task['point']}
                         """)
-                        
-                        if task_type == "urgent":
-                            st.markdown("---")
-                            deadline_display = st.empty()  # Create an empty container to update every second
-                            now = datetime.now(pytz.timezone('Asia/Jakarta'))
-                            time_left = deadline - now
-                            if time_left.total_seconds() <= 0:
-                                deadline_display.markdown("**Deadline has passed!**")
-                                break
 
-                            countdown_str = f"{str(time_left).split('.')[0]}"  # HH:MM:SS format
-                            deadline_display.markdown(f"**Waktu Tersisa**: {countdown_str}")
+                        # Tombol berdasarkan tipe tugas
+                        if task_type != "missed":
+                            if task_type == "urgent":
+                                st.markdown("---")
+                                deadline_display = st.empty()  # Create an empty container to update every second
+                                now = datetime.now(pytz.timezone('Asia/Jakarta'))
+                                time_left = deadline - now
+                                if time_left.total_seconds() <= 0:
+                                    deadline_display.markdown("**Deadline has passed!**")
+                                    break
+ 
+                                countdown_str = f"{str(time_left).split('.')[0]}"  # HH:MM:SS format
+                                deadline_display.markdown(f"**Waktu Tersisa**: {countdown_str}")
+                                # Tombol untuk menyelesaikan tugas
+                            if st.button(f"Selesaikan {task['name']}", key=f"complete-{task['name']}", type="primary"):
+                                self.mark_task_done(task['name'])
+                                time.sleep(1)
+                                st.rerun()
 
-                    # Tombol untuk menyelesaikan tugas
-                    if st.button(f"Complete {task['name']}", key=f"complete-{task['name']}", type="primary"):
-                        self.mark_task_done(task['name'])
+                        else:
+                            # Tombol untuk update deadline
+                            task_deadline = st.date_input("Tanggal Deadline", key=f"date-input-{task['name']}")
+                            deadline_time = st.time_input("Waktu Deadline", value=None, key=f"time-input-{task['name']}") 
+                            # Kombinasikan tanggal dan waktu untuk mendapatkan deadline dalam datetime
+                            
+                            # Periksa apakah deadline lebih kecil dari waktu sekarang
+                            if st.button(f"Perbarui Deadline {task['name']}", key=f"update-deadline-{task['name']}"):
+                                if task_deadline and deadline_time:
+                                    new_deadline = datetime.combine(task_deadline, deadline_time)
+                                    
+                                    # Ambil waktu sekarang
+                                    now = datetime.now()
+                                    if new_deadline < now:
+                                        st.warning("Deadline tidak boleh kurang dari waktu saat ini. Harap pilih deadline yang valid.")
+                                    else: 
+                                        self.update_task_deadline(task['name'], new_deadline)
+                                        time.sleep(3)
+                                        st.rerun()
+                                else:
+                                    st.warning("Harap isi semua untuk melakukan update.")
+
+                            # Tombol untuk menghapus tugas
+                            if st.button(f"Hapus Tugas {task['name']}", key=f"delete-{task['name']}", type="primary"):
+                                self.delete_task(task['name'])
+                                st.warning(f"Tugas '{task['name']}' telah dihapus.")
+                                time.sleep(2)
+                                st.rerun()
+
                     st.markdown("---")
 
                 if not found:
