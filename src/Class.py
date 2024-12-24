@@ -95,7 +95,7 @@ class UserManager:
         return False, "Invalid username or password"
 
     def _reset_points_if_needed(self):
-        """Reset points based on day and time (Monday at 12:00 PM)"""
+        """Reset points based on day and time (Monday at 01:00 AM)"""
         if not self._current_user:
             print("No current user found. Exiting function.")
             return
@@ -112,8 +112,8 @@ class UserManager:
         last_reset = self._current_user.get('last_point_reset', default_last_reset)
         print(f"Last reset time: {last_reset}")
 
-        # Periksa jika waktu sekarang adalah hari Senin setelah jam 12:00 siang dan reset belum dilakukan hari ini
-        is_monday_noon_or_later = current_time.weekday() == 0 and current_time.hour >= 12
+        # Periksa jika waktu sekarang adalah hari Senin setelah jam 01:00 pagi dan reset belum dilakukan hari ini
+        is_monday_noon_or_later = current_time.weekday() == 0 and current_time.hour >= 1
         reset_not_done_today = last_reset.date() != current_time.date()
         print(f"Is Monday after noon: {is_monday_noon_or_later}")
         print(f"Has reset been done today: {reset_not_done_today}")
